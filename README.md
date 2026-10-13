@@ -8,3 +8,15 @@
 
 修改分区文字或照片：编辑 index.html 中 `window.SPACES`（分区）和 `window.SRC`（出处）。
 本地预览：在本文件夹运行 `python3 -m http.server`，打开 http://localhost:8000（直接双击打开时，本地照片无法贴到 3D 楼面上）。
+
+## 会议室预约的跨设备同步
+
+预约数据存放在 Supabase 云数据库（免费额度足够），所有电脑和手机共用一份排期：
+
+1. 在 Supabase 新建项目，打开 SQL Editor，粘贴并运行 `supabase/booking.sql`。
+2. 在 Project Settings → API 复制 Project URL 和 publishable（anon）key。
+3. 填到 `index.html` 里的 `window.BOOKING_CLOUD={url:"…",key:"…"}`。这两项是公开的前端配置，可以放进网页。
+
+时间冲突由数据库的排他约束判定，多台设备同时提交也只会成功一个。页面约每 10 秒自动刷新一次。
+预约只能在提交它的那台设备上取消；管理员可以在 Supabase 的 Table Editor 里直接删除。
+没有填写配置时，页面会退回到“仅本机”演示模式。
