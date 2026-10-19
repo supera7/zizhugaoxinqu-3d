@@ -688,7 +688,7 @@ window.OSM={"b":[[0,"",[-3100,1771,-3100,1777,-3095,1776,-3094,1778,-3098,1779,-
 // 1) BOOKING_CLOUD 云端数据库（Supabase，所有设备同步，冲突由数据库判定）
 // 2) claude.ai 预览页的共享存储
 // 3) 仅本机浏览器（演示用）
-window.BOOKING_CLOUD={url:"https://aqzhelyolbplsxfpqxbn.supabase.co",key:"sb_publishable_e4vlR2u7wa9F_HpvgU_3bw_pkPEufur"}; // 部署后填写：项目 URL 与 publishable（anon）key，均为可公开的前端配置
+window.BOOKING_CLOUD={urls:["https://aqzhelyolbplsxfpqxbn.supabase.co"],key:"sb_publishable_e4vlR2u7wa9F_HpvgU_3bw_pkPEufur"}; // urls 按顺序尝试：国内中转域名在前，Supabase 直连兜底；key 为可公开的前端密钥
 (function(){
   const ROOMS=[{id:"roadshow",name:"路演厅",cap:60,eq:"LED 大屏 · 音响 · 直播"},{id:"big",name:"大会议室",cap:20,eq:"投影 · 视频会议"},{id:"a",name:"洽谈室 A",cap:8,eq:"电视屏 · 白板"},{id:"b",name:"洽谈室 B",cap:6,eq:"电视屏"}];
   const OPEN=8*60,CLOSE=21*60,MAXLEN=240,POLL=10000;
@@ -705,12 +705,19 @@ window.BOOKING_CLOUD={url:"https://aqzhelyolbplsxfpqxbn.supabase.co",key:"sb_pub
 
   // ---------- 云端（Supabase REST，无需额外脚本库） ----------
   const CL=window.BOOKING_CLOUD||{};
-  const cloudOn=!!(CL.url&&CL.key);
-  const base=String(CL.url||"").replace(/\/+$/,"");
+  const BASES=(CL.urls||(CL.url?[CL.url]:[])).map(u=>String(u).replace(/\/+$/,"")).filter(Boolean);
+  const cloudOn=!!(BASES.length&&CL.key);
+  let bi=0;try{const k=+sessionStorage.getItem("zizhu-bk-base");if(k>=0&&k<BASES.length)bi=k;}catch(e){}
   function hdr(extra){const h={"apikey":CL.key,"Content-Type":"application/json",...extra};if(!/^sb_/.test(CL.key))h.Authorization="Bearer "+CL.key;return h;}
-  async function api(path,opt){const r=await fetch(base+"/rest/v1/"+path,{...opt,headers:hdr(opt&&opt.headers),cache:"no-store"});
-    const txt=await r.text();let j=null;try{j=txt?JSON.parse(txt):null;}catch(e){}
-    if(!r.ok){const e=new Error((j&&j.message)||("HTTP "+r.status));e.status=r.status;e.pg=j&&j.code;e.msg=(j&&j.message)||"";throw e;}return j;}
+  async function api(path,opt){let lastErr;
+    for(let t=0;t<BASES.length;t++){const k=(bi+t)%BASES.length;let r;
+      try{const ac=new AbortController(),to=setTimeout(()=>ac.abort(),8000);
+        r=await fetch(BASES[k]+"/rest/v1/"+path,{...opt,headers:hdr(opt&&opt.headers),cache:"no-store",signal:ac.signal});clearTimeout(to);}
+      catch(e){lastErr=e;continue;} // 网络不通：换下一个地址
+      if(k!==bi){bi=k;try{sessionStorage.setItem("zizhu-bk-base",String(k));}catch(e){}}
+      const txt=await r.text();let j=null;try{j=txt?JSON.parse(txt):null;}catch(e){}
+      if(!r.ok){const e=new Error((j&&j.message)||("HTTP "+r.status));e.status=r.status;e.pg=j&&j.code;e.msg=(j&&j.message)||"";throw e;}return j;}
+    throw lastErr||new Error("network");}
   const fromRow=r=>({id:r.id,room:r.room,date:r.day,start:fmt(r.start_min),end:fmt(r.end_min),org:r.org,contact:r.contact,topic:r.topic,people:r.people});
   async function cloudLoad(){const n=shNow();
     const rows=await api(`bookings?select=id,room,day,start_min,end_min,org,contact,topic,people&day=gte.${addDays(n.date,-7)}&day=lte.${addDays(n.date,31)}&order=day,start_min&limit=2000`,{method:"GET"});
